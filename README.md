@@ -53,3 +53,9 @@ sbatch --wrap="./run_on_mig.sh 2 -o /scratch/11098/sambieberich/APOP1/apao1-mig.
 - If asked for a password, it is to write into `/sys/fs/cgroup/migX/cgroup.procs`.
 - If `cpuset` is unavailable in cgroup v2, CPU pinning is skipped; GPU isolation via MIG still applies.
 - Tail logs while running: `tail -f apao1-mig.log`.
+
+---------------
+
+Error status on Friday
+
+I was unable to get the code to work, I think there is a problem with UCX and some permissions things are making it complicated. Simpler scripts like just pure python or c++ mpi programs work fine, but NAMD is causing problems since it is irregularly installed on the system (besides the requirement for modules) to allow for charm gpu support. 
