@@ -66,15 +66,16 @@ if [ -z "${MIG_UUID:-}" ]; then
   exit 1
 fi
 
+echo "Running command in cgroup: ${CGROUP} using MIG UUID: ${MIG_UUID}"
+echo "Command: ${CMD[*]}"
 # Prepare cgroup name based on common convention mig<index> if numeric target was used
 CGROUP=""
 if [[ "$TARGET" =~ ^[0-9]+$ ]]; then
   CGROUP="mig${TARGET}"
 else
-  # If provided UUID form, user must also provide a cgroup name (fallback)
-  # We'll try to infer a free cgroup by searching existing migN cgroups.
+  # If provided UUID form, try to find an existing migN cgroup directory under cgroup v2
   for i in {0..6}; do
-    if cgget -r cpu.cpus mig${i} >/dev/null 2>&1; then
+    if [ -d "/sys/fs/cgroup/mig${i}" ]; then
       CGROUP="mig${i}"
       break
     fi
@@ -85,20 +86,50 @@ else
   fi
 fi
 
-# Check cgexec availability
-if ! command -v cgexec >/dev/null 2>&1; then
-  echo "ERROR: 'cgexec' not found. Install 'cgroup-tools' or run the command manually with taskset/cgroups." 
+# Prefer cgroup v2. If present, place the launched process into /sys/fs/cgroup/<CGROUP>/cgroup.procs
+CG_ROOT="/sys/fs/cgroup"
+USE_CG_V2=0
+if [ -f "${CG_ROOT}/cgroup.controllers" ]; then
+  USE_CG_V2=1
+fi
+
+if [ "$USE_CG_V2" -ne 1 ]; then
+  echo "ERROR: cgroup v2 not detected at ${CG_ROOT}. This script expects cgroup v2 on Ubuntu." >&2
   exit 1
+fi
+
+# Ensure the target cgroup directory exists
+CGDIR="${CG_ROOT}/${CGROUP}"
+if [ ! -d "$CGDIR" ]; then
+  echo "cgroup v2 directory $CGDIR not found — attempting to create it (requires sudo)"
+  sudo mkdir -p "$CGDIR"
 fi
 
 # Export CUDA_VISIBLE_DEVICES to the MIG UUID so CUDA apps use the partition
 export CUDA_VISIBLE_DEVICES="$MIG_UUID"
 
-echo "Running command in cgroup: ${CGROUP} using MIG UUID: ${MIG_UUID}"
-
+echo "Running command in cgroup v2: ${CGDIR} using MIG UUID: ${MIG_UUID}"
 echo "Command: ${CMD[*]}"
 
-# Run the command inside the cpu cgroup
-exec cgexec -g cpu:/${CGROUP} "${CMD[@]}"
+# Start the command in background, move its main PID into the target cgroup, then wait
+"${CMD[@]}" &
+pid=$!
+
+if [ ! -w "${CGDIR}/cgroup.procs" ]; then
+  # Attempt to write via sudo
+  if ! echo "$pid" | sudo tee "${CGDIR}/cgroup.procs" >/dev/null; then
+    echo "ERROR: failed to place PID ${pid} into ${CGDIR}/cgroup.procs" >&2
+    echo "You may need root privileges to move processes into cgroups. Killing process." >&2
+    kill "$pid" 2>/dev/null || true
+    exit 1
+  fi
+else
+  echo "$pid" > "${CGDIR}/cgroup.procs"
+fi
+
+# Wait for process to finish and propagate its exit code
+wait "$pid"
+exit_code=$?
+exit $exit_code
 
 # End of script
