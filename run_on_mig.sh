@@ -10,9 +10,10 @@ set -euo pipefail
 
 if [ "$#" -lt 3 ]; then
   cat <<EOF
-Usage: $0 <mig_index_or_uuid> -- <command...>
+Usage: $0 <mig_index_or_uuid> [-o OUTPUT] -- <command...>
 Examples:
   $0 2 -- namd2 +p10 myconf.conf
+  $0 2 -o namd.out -- namd2 +p10 myconf.conf
   $0 UUID:MIG-GPU-xxxxx -- ./run_my_job.sh
 EOF
   exit 1
@@ -20,7 +21,28 @@ fi
 
 TARGET=$1
 shift
-if [ "$1" != "--" ]; then
+
+OUTPUT_FILE=""
+
+# Parse optional flags before the -- separator
+while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do
+  case "$1" in
+    -o|--out|--output)
+      if [ "$#" -lt 2 ]; then
+        echo "ERROR: --out requires a file argument"
+        exit 1
+      fi
+      OUTPUT_FILE="$2"
+      shift 2
+      ;;
+    *)
+      echo "ERROR: unknown option '$1' before --"
+      exit 1
+      ;;
+  esac
+done
+
+if [ "$#" -lt 2 ] || [ "$1" != "--" ]; then
   echo "ERROR: missing '--' separator before command"
   exit 1
 fi
@@ -66,8 +88,6 @@ if [ -z "${MIG_UUID:-}" ]; then
   exit 1
 fi
 
-echo "Running command in cgroup: ${CGROUP} using MIG UUID: ${MIG_UUID}"
-echo "Command: ${CMD[*]}"
 # Prepare cgroup name based on common convention mig<index> if numeric target was used
 CGROUP=""
 if [[ "$TARGET" =~ ^[0-9]+$ ]]; then
@@ -109,10 +129,17 @@ fi
 export CUDA_VISIBLE_DEVICES="$MIG_UUID"
 
 echo "Running command in cgroup v2: ${CGDIR} using MIG UUID: ${MIG_UUID}"
+if [ -n "$OUTPUT_FILE" ]; then
+  echo "Output file: ${OUTPUT_FILE}"
+fi
 echo "Command: ${CMD[*]}"
 
 # Start the command in background, move its main PID into the target cgroup, then wait
-"${CMD[@]}" &
+if [ -n "$OUTPUT_FILE" ]; then
+  "${CMD[@]}" >"$OUTPUT_FILE" 2>&1 &
+else
+  "${CMD[@]}" &
+fi
 pid=$!
 
 if [ ! -w "${CGDIR}/cgroup.procs" ]; then
