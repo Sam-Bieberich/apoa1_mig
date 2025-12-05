@@ -17,14 +17,12 @@ sudo bash 7_mig.sh
 2. Create CPU cgroups (assign 10 cores each):
 
 ```bash
-cd data_for_ref
 sudo bash setup_cgroups.sh
 ```
 
 3. Run NAMD on MIG partition index 2 (example):
 
 ```bash
-cd data_for_ref
 ./run_on_mig.sh 2 -- namd2 +p10 myconf.conf
 ```
 
