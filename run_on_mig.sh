@@ -8,6 +8,13 @@
 
 set -euo pipefail
 
+# Do not run this script with sudo/root: root on root-squashed filesystems cannot write user logs,
+# and environment modules/paths may be missing. Run as your user; the script will sudo only for cgroup writes.
+if [ "$(id -u)" -eq 0 ]; then
+  echo "ERROR: Run this script as a regular user (no sudo). It will prompt for sudo only when needed for cgroups/logs." >&2
+  exit 1
+fi
+
 if [ "$#" -lt 3 ]; then
   cat <<EOF
 Usage: $0 <mig_index_or_uuid> [-o OUTPUT] -- <command...>

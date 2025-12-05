@@ -28,7 +28,7 @@ sudo bash setup_cgroups.sh
 
 ## Run directly (example: mig2, log to file)
 ```bash
-./run_on_mig.sh 2 -o apao1-mig.log -- namd3 +p10 /scratch/11098/sambieberich/APOP1/apao1.namd
+./run_on_mig.sh 2 -o /scratch/11098/sambieberich/APOP1/apao1-mig.log -- namd3 +p10 /scratch/11098/sambieberich/APOP1/apao1.namd
 tail -f apao1-mig.log
 ```
 - `-o` captures stdout/stderr to `apao1-mig.log`.
@@ -43,12 +43,13 @@ module load cuda/12.6 nvmath/12.6.0 openmpi/5.0.5 ucx/1.18.0 namd-gpu/3.0.2
 ```
 - If submitting a batch job while keeping `runjob` untouched:
 ```bash
-sbatch --wrap="./run_on_mig.sh 2 -o apao1-mig.log -- run_namd_gpu apao1.namd apao1-run.out" runjob
+sbatch --wrap="./run_on_mig.sh 2 -o /scratch/11098/sambieberich/APOP1/apao1-mig.log -- run_namd_gpu apao1.namd apao1-run.out" runjob
 ```
   The wrapper runs inside the sbatch step and moves the NAMD PID into `/sys/fs/cgroup/mig2`.
 - `run_namd_gpu.sh` uses `srun ... +devices 0`; with `run_on_mig.sh` setting `CUDA_VISIBLE_DEVICES`, device 0 is the selected MIG slice.
 
 ## Notes & tips
+- Run as your normal user (do not wrap the whole script with sudo); it will prompt for sudo only when writing to cgroup/log if needed. Running as root can fail to write logs on root-squashed filesystems and may miss your module environment.
 - If asked for a password, it is to write into `/sys/fs/cgroup/migX/cgroup.procs`.
 - If `cpuset` is unavailable in cgroup v2, CPU pinning is skipped; GPU isolation via MIG still applies.
 - Tail logs while running: `tail -f apao1-mig.log`.
