@@ -134,29 +134,28 @@ if [ -n "$OUTPUT_FILE" ]; then
 fi
 echo "Command: ${CMD[*]}"
 
-# Start the command in background, move its main PID into the target cgroup, then wait
-if [ -n "$OUTPUT_FILE" ]; then
-  "${CMD[@]}" >"$OUTPUT_FILE" 2>&1 &
-else
-  "${CMD[@]}" &
+# Move this shell into the cgroup first so the launched command inherits it
+if ! echo "$$" | sudo tee "${CGDIR}/cgroup.procs" >/dev/null; then
+  echo "ERROR: failed to place shell PID $$ into ${CGDIR}/cgroup.procs" >&2
+  exit 1
 fi
-pid=$!
 
-if [ ! -w "${CGDIR}/cgroup.procs" ]; then
-  # Attempt to write via sudo
-  if ! echo "$pid" | sudo tee "${CGDIR}/cgroup.procs" >/dev/null; then
-    echo "ERROR: failed to place PID ${pid} into ${CGDIR}/cgroup.procs" >&2
-    echo "You may need root privileges to move processes into cgroups. Killing process." >&2
-    kill "$pid" 2>/dev/null || true
-    exit 1
+# Run the command (inherits cgroup from this shell)
+if [ -n "$OUTPUT_FILE" ]; then
+  # If output file not writable, fall back to sudo tee
+  if [ -w "$OUTPUT_FILE" ] || { touch "$OUTPUT_FILE" 2>/dev/null && [ -w "$OUTPUT_FILE" ]; }; then
+    "${CMD[@]}" 2>&1 | tee "$OUTPUT_FILE"
+    exit_code=${PIPESTATUS[0]}
+  else
+    echo "Output file not writable, using sudo tee: $OUTPUT_FILE"
+    "${CMD[@]}" 2>&1 | sudo tee "$OUTPUT_FILE"
+    exit_code=${PIPESTATUS[0]}
   fi
 else
-  echo "$pid" > "${CGDIR}/cgroup.procs"
+  "${CMD[@]}"
+  exit_code=$?
 fi
 
-# Wait for process to finish and propagate its exit code
-wait "$pid"
-exit_code=$?
 exit $exit_code
 
 # End of script

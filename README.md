@@ -28,7 +28,7 @@ sudo bash setup_cgroups.sh
 
 ## Run directly (example: mig2, log to file)
 ```bash
-./run_on_mig.sh 2 -o apao1-mig.log -- namd3 +p10 apao1.namd
+./run_on_mig.sh 2 -o apao1-mig.log -- namd3 +p10 /scratch/11098/sambieberich/APOP1/apao1.namd
 tail -f apao1-mig.log
 ```
 - `-o` captures stdout/stderr to `apao1-mig.log`.
